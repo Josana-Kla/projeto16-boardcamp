@@ -1,16 +1,26 @@
 import express from 'express';
 import connection from './database/database.js';
 import joi from 'joi';
+import DateExtension from '@joi/date';
 
 const app = express();
 app.use(express.json());
 
+const joii = joi.extend(DateExtension);
+
 const gamesSchema = joi.object({
-    name: joi.string().pattern(/^[A-zÀ-ú]/).required().empty(''),
-    image: joi.string().uri().required().empty(''),
+    name: joi.string().pattern(/^[A-zÀ-ú]/).required().empty(' '),
+    image: joi.string().uri().required().empty(' '),
     stockTotal: joi.number().integer().greater(0).required(),
     categoryId: joi.number().integer().required(),
     pricePerDay: joi.number().integer().greater(0).required()
+}); 
+
+const customersSchema = joi.object({
+    name: joi.string().pattern(/^[A-zÀ-ú]/).required().empty(' '),
+    phone: joi.string().pattern(/^[0-9]+$/).min(10).max(11).required().empty(' '),
+    cpf: joi.string().pattern(/^[0-9]+$/).min(11).max(11).required().empty(' '),
+    birthday: joii.date().utc().format('YYYY-MM-DD').required()
 }); 
 
 //FUNCTIONS:
@@ -184,6 +194,32 @@ app.get("/customers", async (req, res) => {
 
             return res.status(200).send(customers.rows);
         }
+    } catch (error) {
+        console.log(error);
+        return res.sendStatus(500);
+    }
+});
+
+app.post("/customers", async (req, res) => {
+    const { name, phone, cpf, birthday } = req.body;
+    const validation = customersSchema.validate(req.body, {abortEarly: false});
+
+    if(validation.error) {
+        const error = validation.error.details.map(detail => detail.message);
+
+        return res.status(400).send(error);
+    };
+
+   /*  if(await checkCpfExists(cpf)) {
+        return res.sendStatus(400);
+    }; */
+
+    try {
+        await connection.query(`
+            INSERT INTO customers(name, phone, cpf, birthday) VALUES($1, $2, $3, $4)
+        `, [name, phone, cpf, birthday]);
+
+        return res.sendStatus(201);
     } catch (error) {
         console.log(error);
         return res.sendStatus(500);
