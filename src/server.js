@@ -116,9 +116,9 @@ app.get("/games", async (req, res) => {
         let games;
 
         if(name) {
-           /*  games = await connection.query(`
-                SELECT * FROM games WHERE name LIKE '$1%';
-            `, [name]); */
+            games = await connection.query(`
+                SELECT * FROM games WHERE name ILIKE($1 || '%');
+            `, [name]);
 
             return res.status(200).send(games.rows);
         } else {
@@ -158,6 +158,32 @@ app.post("/games", async (req, res) => {
         `, [name, image, stockTotal, categoryId, pricePerDay]);
 
         return res.sendStatus(201);
+    } catch (error) {
+        console.log(error);
+        return res.sendStatus(500);
+    }
+});
+
+// CLIENTES ROUTES:
+app.get("/customers", async (req, res) => {
+    const { cpf } = req.query;
+
+    try {
+        let customers;
+
+        if(cpf) {
+            customers = await connection.query(`
+                SELECT * FROM customers WHERE cpf LIKE $1 || '%';
+            `, [cpf]);
+
+            return res.status(200).send(customers.rows);
+        } else {
+            customers = await connection.query(`
+                SELECT * FROM customers;
+            `);
+
+            return res.status(200).send(customers.rows);
+        }
     } catch (error) {
         console.log(error);
         return res.sendStatus(500);
