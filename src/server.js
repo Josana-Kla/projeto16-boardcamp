@@ -81,6 +81,25 @@ async function checkIdCategoryExists(id) {
     }
 };
 
+async function checkCpfExists(cpf) {
+    try {
+        const cpfExists = await connection.query(`
+            SELECT * FROM customers WHERE cpf = $1;
+        `, [cpf]);
+
+        if(cpfExists.rows[0].cpf === undefined) {
+            console.log("O cpf não existe!");
+            return false;
+        } else {
+            console.log("Esse cpf já existe!");
+            return true;
+        }
+    } catch (error) {
+        console.log(error);
+        console.log("Erro no servidor ao verificar se o cpf existe!");
+    }
+};
+
 // CATEGORIES ROUTES:
 app.get("/categories", async (req, res) => {
     try {
@@ -210,9 +229,9 @@ app.post("/customers", async (req, res) => {
         return res.status(400).send(error);
     };
 
-   /*  if(await checkCpfExists(cpf)) {
-        return res.sendStatus(400);
-    }; */
+    if(await checkCpfExists(cpf)) {
+        return res.sendStatus(409);
+    };
 
     try {
         await connection.query(`
