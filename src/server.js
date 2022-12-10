@@ -60,4 +60,30 @@ app.post("/categories", async (req, res) => {
     }
 });
 
+// GAMES ROUTES:
+app.get("/games", async (req, res) => {
+    const { name } = req.query;
+
+    try {
+        let games;
+
+        if(name) {
+           /*  games = await connection.query(`
+                SELECT * FROM games WHERE name LIKE '$1%';
+            `, [name]); */
+
+            return res.status(200).send(games.rows);
+        } else {
+            games = await connection.query(`
+                SELECT * FROM games;
+            `);
+
+            return res.status(200).send(games.rows);
+        }
+    } catch (error) {
+        console.log(error);
+        return res.sendStatus(500);
+    }
+});
+
 app.listen(4000);
