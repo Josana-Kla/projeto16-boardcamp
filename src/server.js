@@ -245,4 +245,21 @@ app.post("/customers", async (req, res) => {
     }
 });
 
+app.get("/customers/:id", async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+        const customerById = await connection.query(`
+            SELECT * FROM customers WHERE id = $1;
+        `, [id]);
+
+        if(customerById.rows[0].id) {
+            return res.status(200).send(customerById.rows[0]);
+        };
+    } catch (error) {
+        console.log(error);
+        return res.sendStatus(404);
+    }
+});
+
 app.listen(4000, () => console.log("Executando..."));
