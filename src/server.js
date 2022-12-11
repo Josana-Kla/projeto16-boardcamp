@@ -289,4 +289,39 @@ app.put("/customers/:id", async (req, res) => {
     }
 });
 
+// RENTALS ROUTES:
+app.get("/rentals", async (req, res) => {
+    const { customerId } = req.query;
+    const { gameId } = req.query;
+
+    try {
+        let clientRentals;
+
+        if(customerId) {
+            clientRentals = await connection.query(`
+                SELECT * FROM rentals WHERE customerId = $1;
+            `, [customerId]);
+
+            return res.status(200).send(clientRentals.rows);
+        } else if(gameId) {
+            clientRentals = await connection.query(`
+                SELECT * FROM rentals WHERE gameId = $1;
+            `, [gameId]);
+
+            return res.status(200).send(clientRentals.rows);
+        } else {
+            clientRentals = await connection.query(`
+                SELECT * FROM rentals;
+            `);
+
+            return res.status(200).send(clientRentals.rows);
+        }
+    } catch (error) {
+        console.log(error);
+        return res.sendStatus(500);
+    }
+});
+
+
+
 app.listen(4000, () => console.log("Executando..."));
