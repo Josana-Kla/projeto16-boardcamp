@@ -2,6 +2,7 @@ import express from 'express';
 import connection from './database/database.js';
 import joi from 'joi';
 import DateExtension from '@joi/date';
+import dayjs from 'dayjs';
 
 const app = express();
 app.use(express.json());
@@ -24,6 +25,10 @@ const customersSchema = joi.object({
 }); 
 
 //FUNCTIONS:
+function currentDate() {
+    return dayjs(new Date()).format('YYYY-MM-DD');
+};
+
 async function checkCategoryExists(name) {
     try {
         const categoryExists = await connection.query(`
@@ -97,6 +102,61 @@ async function checkCpfExists(cpf) {
     } catch (error) {
         console.log(error);
         console.log("Erro no servidor ao verificar se o cpf existe!");
+    }
+};
+
+async function checkCustomerIdExists(id) {
+    try {
+        const idExists = await connection.query(`
+            SELECT * FROM customers WHERE id = $1;
+        `, [id]);
+
+        if(idExists.rows[0].id === undefined) {
+            console.log("O id do cliente não existe!");
+            return true;
+        } else {
+            console.log("Esse id de cliente já existe!");
+            return false; 
+        }
+    } catch (error) {
+        console.log(error);
+        console.log("Erro no servidor ao verificar se o id do cliente existe!");
+    }
+};
+
+async function checkGameIdExists(id) {
+    try {
+        const gameIdExists = await connection.query(`
+            SELECT * FROM games WHERE id=$1;
+        `, [id]);
+
+        if(gameIdExists.rows[0].id === undefined) {
+            console.log("O id do jogo não existe!");
+            return true;
+        } else {
+            console.log("Esse id de jogo já existe!");
+            return false;
+        }
+    } catch (error) {
+        console.log(error);
+        console.log("Erro no servidor ao verificar se o id do jogo existe!");
+    }
+};
+
+async function calculateTotalGamePriceForRentedDays(daysRented, gameId) {
+    try {
+        const gamePrice = await connection.query(`
+            SELECT "pricePerDay" FROM games WHERE id = $1;
+        `, [gameId]);
+
+        if(gamePrice.rows[0]) {
+            const calcTotal = daysRented * gamePrice;
+            console.log(`O preço total do aluguel do jogo é: ${calcTotal}`);
+            return calcTotal;
+        };
+    } catch (error) {
+        console.log(error);
+        console.log("Erro no servidor ao calcular o preço total do aluguel do jogo!");
     }
 };
 
@@ -322,6 +382,40 @@ app.get("/rentals", async (req, res) => {
     }
 });
 
+app.post("/rentals", async (req, res) => {
+    const { customerId, gameId, daysRented } = req.body;
+    const rentDate = currentDate();
+    const returnDate = null;
+    const delayFee = null;
 
+    if(await checkCustomerIdExists(customerId)) {
+        return res.sendStatus(400);
+    };
+
+    if(await checkGameIdExists(gameId)) {
+        return res.sendStatus(400);
+    };
+
+    const originalPrice = calculateTotalGamePriceForRentedDays(daysRented, gameId); 
+
+    try {
+        await connection.query(`
+            INSERT INTO rentals("customerId", "gameId", "rentDate", "daysRented", "returnDate", "originalPrice", "delayFee") VALUES($1, $2, $3, $4, $5, $6, $7)
+        `, [
+            customerId,
+            gameId,
+            rentDate,
+            daysRented,
+            returnDate,     // data que o cliente devolveu o jogo (null enquanto não devolvido)
+            originalPrice,  // preço total do aluguel em centavos (dias alugados vezes o preço por dia do jogo)
+            delayFee  // multa total paga por atraso (dias que passaram do prazo vezes o preço por dia do jogo)
+        ]);
+
+        return res.sendStatus(201);
+    } catch (error) {
+        console.log(error);
+        return res.sendStatus(500);
+    }
+});
 
 app.listen(4000, () => console.log("Executando..."));
