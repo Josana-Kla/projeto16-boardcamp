@@ -24,6 +24,12 @@ const customersSchema = joi.object({
     birthday: joii.date().utc().format('YYYY-MM-DD').required()
 }); 
 
+const rentalsSchema = joi.object({
+    customerId: joi.number().integer().required(),
+    gameId: joi.number().integer().required(),
+    daysRented: joi.number().integer().greater(0).required()
+}); 
+
 //FUNCTIONS:
 function currentDate() {
     return dayjs(new Date()).format('YYYY-MM-DD');
@@ -77,7 +83,7 @@ async function checkIdCategoryExists(id) {
             console.log("O id não existe! Escolha um id existente ou crie uma nova categoria!");
             return true;
         } else {
-            console.log("Esse id existe! 😃");
+            console.log("Esse id de categoria existe! 😃");
             return false;
         }
     } catch (error) {
@@ -120,7 +126,7 @@ async function checkCustomerIdExists(id) {
         }
     } catch (error) {
         console.log(error);
-        console.log("Erro no servidor ao verificar se o id do cliente existe!");
+        console.log("Erro no servidor ao verificar se o id do cliente existe! Ou ele não existe!");
     }
 };
 
@@ -139,7 +145,7 @@ async function checkGameIdExists(id) {
         }
     } catch (error) {
         console.log(error);
-        console.log("Erro no servidor ao verificar se o id do jogo existe!");
+        console.log("Erro no servidor ao verificar se o id do jogo existe! Ou ele não existe!");
     }
 };
 
@@ -149,14 +155,37 @@ async function calculateTotalGamePriceForRentedDays(daysRented, gameId) {
             SELECT "pricePerDay" FROM games WHERE id = $1;
         `, [gameId]);
 
-        if(gamePrice.rows[0]) {
-            const calcTotal = daysRented * gamePrice;
-            console.log(`O preço total do aluguel do jogo é: ${calcTotal}`);
+        const gamePriceValue = gamePrice.rows[0].pricePerDay;
+
+        if(gamePriceValue) {
+            const calcTotal = daysRented * gamePriceValue;
+            console.log(`O preço total do aluguel do jogo é: ${daysRented} dias de aluguel x ${gamePriceValue} preço do jogo = ${calcTotal}`);
             return calcTotal;
         };
     } catch (error) {
         console.log(error);
         console.log("Erro no servidor ao calcular o preço total do aluguel do jogo!");
+    }
+};
+
+async function checkAvailableGames(daysRented, gameId) {
+    try {
+        const game = await connection.query(`
+            SELECT "stockTotal" FROM games WHERE id = $1;
+        `, [gameId]);
+
+        const gameStockValue = game.rows[0].stockTotal;
+
+        if(daysRented === undefined || daysRented <= gameStockValue) {
+            console.log(`O jogo está disponível para locação! Temos ${gameStockValue} jogos em estoque e você acabou de alugar um 😃`);
+            return true;
+        } else {
+            console.log("O jogo não está disponível para locação!");
+            return false;
+        };
+    } catch (error) {
+        console.log(error);
+        console.log("Erro no servidor ao verificar se o jogo está disponível para locação!");
     }
 };
 
@@ -384,9 +413,16 @@ app.get("/rentals", async (req, res) => {
 
 app.post("/rentals", async (req, res) => {
     const { customerId, gameId, daysRented } = req.body;
+    const validation = rentalsSchema.validate(req.body, {abortEarly: false});
     const rentDate = currentDate();
     const returnDate = null;
     const delayFee = null;
+
+    if(validation.error) {
+        const error = validation.error.details.map(detail => detail.message);
+
+        return res.status(400).send(error);
+    };
 
     if(await checkCustomerIdExists(customerId)) {
         return res.sendStatus(400);
@@ -396,26 +432,33 @@ app.post("/rentals", async (req, res) => {
         return res.sendStatus(400);
     };
 
-    const originalPrice = calculateTotalGamePriceForRentedDays(daysRented, gameId); 
+    const originalPrice = await calculateTotalGamePriceForRentedDays(daysRented, gameId); 
+    const availableGames = await checkAvailableGames(daysRented, gameId);
 
     try {
-        await connection.query(`
-            INSERT INTO rentals("customerId", "gameId", "rentDate", "daysRented", "returnDate", "originalPrice", "delayFee") VALUES($1, $2, $3, $4, $5, $6, $7)
-        `, [
-            customerId,
-            gameId,
-            rentDate,
-            daysRented,
-            returnDate,     // data que o cliente devolveu o jogo (null enquanto não devolvido)
-            originalPrice,  // preço total do aluguel em centavos (dias alugados vezes o preço por dia do jogo)
-            delayFee  // multa total paga por atraso (dias que passaram do prazo vezes o preço por dia do jogo)
-        ]);
+        if(availableGames){
+            await connection.query(`
+                INSERT INTO rentals("customerId", "gameId", "rentDate", "daysRented", "returnDate", "originalPrice", "delayFee") VALUES($1, $2, $3, $4, $5, $6, $7)
+            `, [
+                customerId,
+                gameId,
+                rentDate,
+                daysRented,
+                returnDate,     // data que o cliente devolveu o jogo (null enquanto não devolvido)
+                originalPrice,  // preço total do aluguel em centavos (dias alugados vezes o preço por dia do jogo)
+                delayFee  // multa total paga por atraso (dias que passaram do prazo vezes o preço por dia do jogo)
+            ]);
 
-        return res.sendStatus(201);
+            return res.sendStatus(201);
+        } else {
+            return res.sendStatus(400);
+        }
     } catch (error) {
         console.log(error);
         return res.sendStatus(500);
     }
 });
+
+
 
 app.listen(4000, () => console.log("Executando..."));
