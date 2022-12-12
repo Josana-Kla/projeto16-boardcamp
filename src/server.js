@@ -189,6 +189,46 @@ async function checkAvailableGames(daysRented, gameId) {
     }
 };
 
+async function checkRentalIdExists(id) {
+    try {
+        const rentalIdExists = await connection.query(`
+            SELECT * FROM rentals WHERE id=$1;
+        `, [id]);
+
+        if(rentalIdExists.rows[0].id === undefined) {
+            console.log("O id do aluguel não existe!");
+            return true;
+        } else {
+            console.log("Esse id de aluguel já existe!");
+            return false;
+        }
+    } catch (error) {
+        console.log(error);
+        console.log("Erro no servidor ao verificar se o id do aluguel existe! Ou ele não existe!");
+    }
+};
+
+async function checkMovieNotReturned(id) {
+    try {
+        const movieNotReturned = await connection.query(`
+            SELECT "returnDate" FROM rentals WHERE id=$1;
+        `, [id]);
+
+        const movieNotReturnedValue = movieNotReturned.rows[0].returnDate;
+
+        if(movieNotReturnedValue !== undefined || movieNotReturnedValue !== null) {
+            console.log("Esse filme não foi devolvido! Não é possível excluir o aluguel");
+            return true;
+        } else {
+            console.log("O filme foi devolvido! Pode excluir o aluguel");
+            return false;
+        }
+    } catch (error) {
+        console.log(error);
+        console.log("Erro no servidor ao verificar se o filme foi devolvido!");
+    }
+};
+
 // CATEGORIES ROUTES:
 app.get("/categories", async (req, res) => {
     try {
@@ -459,6 +499,32 @@ app.post("/rentals", async (req, res) => {
     }
 });
 
+
+
+app.delete("/rentals/:id", async (req, res) => {
+    const { id } = req.params;
+
+    if(await checkRentalIdExists(id)) {
+        return res.sendStatus(404);
+    };
+
+    const movieNotReturned = await checkMovieNotReturned(id);
+
+    try {
+        if(movieNotReturned) {
+            return res.sendStatus(400);
+        } else {
+            await connection.query(`
+                DELETE FROM rentals WHERE id = $1;
+            `, [id]);
+
+            return res.sendStatus(200);
+        } 
+    } catch (error) {
+        console.log(error);
+        return res.sendStatus(500);
+    }
+});
 
 
 app.listen(4000, () => console.log("Executando..."));
