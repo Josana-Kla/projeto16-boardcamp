@@ -208,6 +208,40 @@ async function checkRentalIdExists(id) {
     }
 };
 
+async function calculateAmountFineForLateReturnedGame(id, delayFee) {
+    try {
+        const rentalsById = await connection.query(`
+            SELECT ("gameId", "rentDate", "daysRented", "returnDate") FROM rentals WHERE id = $1;
+        `, [id]);
+
+        const rentDate = rentalsById.rows[0].rentDate;
+        const daysRented = rentalsById.rows[0].daysRented;
+        const returnDate = rentalsById.rows[0].returnDate;
+        const gameId = rentalsById.rows[0].gameId;
+
+        const gamePricePerDay = await connection.query(`
+            SELECT "pricePerDay" FROM games WHERE id = $1;
+        `, [gameId]);
+
+        const pricePerDay = gamePricePerDay.rows[0].pricePerDay;
+
+        const subtractionDates = Math.abs(returnDate.getTime() - rentDate.getTime());
+        const daysDifferenceBetweenReturnAndRentDay = Math.ceil(subtractionDates / (1000 * 60 * 60 * 24)); 
+        delayFee = (daysDifferenceBetweenReturnAndRentDay - daysRented) * pricePerDay;
+
+        if(daysRented < daysDifferenceBetweenReturnAndRentDay) {
+            await connection.query(`
+                UPDATE rentals SET "delayFee" = $1 WHERE id = $2;
+            `, [delayFee, id]);
+        };
+
+        return res.sendStatus(200);
+    } catch (error) {
+        console.log(error);
+        console.log("Erro no servidor ao calcular o valor da multa!");
+    }
+};
+
 async function checkMovieNotReturned(id) {
     try {
         const movieNotReturned = await connection.query(`
@@ -499,7 +533,32 @@ app.post("/rentals", async (req, res) => {
     }
 });
 
+app.put("/rentals/:id/return", async (req, res) => {
+    const { id } = req.params;
+    const returnDate = currentDate();
+    let delayFee = null;
 
+    if(await checkRentalIdExists(id)) {
+        return res.sendStatus(404);
+    };
+
+    if(await checkMovieNotReturned(id)) {
+        return res.sendStatus(404);
+    };
+
+    try {
+        await connection.query(`
+            UPDATE rentals SET "returnDate" = $1 WHERE id = $2
+        `, [returnDate, id]); 
+
+        await calculateAmountFineForLateReturnedGame(id, delayFee);
+
+        return res.sendStatus(200);
+    } catch (error) {
+        console.log(error);
+        return res.sendStatus(500);
+    }
+});
 
 app.delete("/rentals/:id", async (req, res) => {
     const { id } = req.params;
@@ -525,6 +584,5 @@ app.delete("/rentals/:id", async (req, res) => {
         return res.sendStatus(500);
     }
 });
-
 
 app.listen(4000, () => console.log("Executando..."));
