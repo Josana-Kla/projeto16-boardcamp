@@ -211,7 +211,7 @@ async function checkRentalIdExists(id) {
 async function calculateAmountFineForLateReturnedGame(id, delayFee) {
     try {
         const rentalsById = await connection.query(`
-            SELECT ("gameId", "rentDate", "daysRented", "returnDate") FROM rentals WHERE id = $1;
+            SELECT "gameId", "rentDate", "daysRented", "returnDate" FROM rentals WHERE id = $1;
         `, [id]);
 
         const rentDate = rentalsById.rows[0].rentDate;
@@ -222,7 +222,7 @@ async function calculateAmountFineForLateReturnedGame(id, delayFee) {
         const gamePricePerDay = await connection.query(`
             SELECT "pricePerDay" FROM games WHERE id = $1;
         `, [gameId]);
-
+        
         const pricePerDay = gamePricePerDay.rows[0].pricePerDay;
 
         const subtractionDates = Math.abs(returnDate.getTime() - rentDate.getTime());
@@ -230,12 +230,9 @@ async function calculateAmountFineForLateReturnedGame(id, delayFee) {
         delayFee = (daysDifferenceBetweenReturnAndRentDay - daysRented) * pricePerDay;
 
         if(daysRented < daysDifferenceBetweenReturnAndRentDay) {
-            await connection.query(`
-                UPDATE rentals SET "delayFee" = $1 WHERE id = $2;
-            `, [delayFee, id]);
+            console.log(`Tem multa no valor de ${delayFee}`);
+            return delayFee;
         };
-
-        return res.sendStatus(200);
     } catch (error) {
         console.log(error);
         console.log("Erro no servidor ao calcular o valor da multa!");
@@ -251,10 +248,10 @@ async function checkMovieNotReturned(id) {
         const movieNotReturnedValue = movieNotReturned.rows[0].returnDate;
 
         if(movieNotReturnedValue !== undefined || movieNotReturnedValue !== null) {
-            console.log("Esse filme não foi devolvido! Não é possível excluir o aluguel");
+            console.log("Esse filme não foi devolvido!");
             return true;
         } else {
-            console.log("O filme foi devolvido! Pode excluir o aluguel");
+            console.log("O filme foi devolvido!");
             return false;
         }
     } catch (error) {
@@ -542,7 +539,7 @@ app.put("/rentals/:id/return", async (req, res) => {
         return res.sendStatus(404);
     };
 
-    if(await checkMovieNotReturned(id)) {
+    if(await !checkMovieNotReturned(id)) {
         return res.sendStatus(404);
     };
 
@@ -551,7 +548,16 @@ app.put("/rentals/:id/return", async (req, res) => {
             UPDATE rentals SET "returnDate" = $1 WHERE id = $2
         `, [returnDate, id]); 
 
-        await calculateAmountFineForLateReturnedGame(id, delayFee);
+        const fineExists = await calculateAmountFineForLateReturnedGame(id, delayFee);
+        console.log(fineExists);
+
+        if(fineExists !== undefined) {
+            await connection.query(`
+                UPDATE rentals SET "delayFee" = $1 WHERE id = $2;
+            `, [fineExists, id]);
+
+            return res.sendStatus(200);
+        }; 
 
         return res.sendStatus(200);
     } catch (error) {
