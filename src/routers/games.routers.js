@@ -5,6 +5,5 @@ const router = express.Router();
 
 router.get("/games", getGames);
 router.post("/games", createGames);
-router.post("", );
 
 export default router;
